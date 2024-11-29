@@ -1,0 +1,556 @@
+<!DOCTYPE html>  
+<html>
+<head>
+    <title>Interactive Physics Simulation</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            font-family: system-ui, -apple-system, sans-serif;
+            color: #fff;
+        }
+        #canvas { 
+            background: #000; 
+            display: block; 
+            margin: 0;
+            cursor: crosshair;
+        }
+        .panel {
+            position: absolute;
+            background: rgba(34, 34, 34, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: opacity 0.3s;
+        }
+        #controls {
+            top: 15px;
+            left: 15px;
+            width: 280px;
+        }
+        #stats {
+            top: 15px;
+            right: 15px;
+            width: 300px;
+        }
+        .stat-value {
+            float: right;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .control-group {
+            margin-bottom: 12px;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 14px;
+            color: #aaa;
+        }
+        input[type="range"] {
+            width: 100%;
+            margin: 4px 0;
+        }
+        .value-display {
+            float: right;
+            font-family: monospace;
+            color: #4CAF50;
+        }
+        .checkbox-group {
+            display: flex;
+            gap: 15px;
+        }
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+        }
+        #toolbar {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(34, 34, 34, 0.9);
+            padding: 10px;
+            border-radius: 8px;
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            background: #4CAF50;
+            border: none;
+            padding: 8px 16px;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:active {
+            background: #3d8b40;
+        }
+        /* Minimize Button Styles */
+        .minimize-button {
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 16px;
+            cursor: pointer;
+            float: right;
+            padding: 0;
+            margin: 0;
+        }
+        .minimize-button:focus {
+            outline: none;
+        }
+        /* Adjust header to accommodate minimize button */
+        .panel h2, .panel h3 {
+            position: relative;
+            padding-right: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls" class="panel">
+        <h2 style="margin-top: 0; color: #4CAF50;">
+            Simulation Controls
+            <button class="minimize-button" title="Minimize">–</button>
+        </h2>
+        <div class="control-group">
+            <label>Elasticity <span class="value-display" id="elasticityValue">1.00</span></label>
+            <input type="range" id="elasticity" min="0" max="1" step="0.01" value="1">
+        </div>
+        <div class="control-group">
+            <label>Time Speed <span class="value-display" id="timeSpeedValue">1.0x</span></label>
+            <input type="range" id="timeSpeed" min="0.1" max="10" step="0.1" value="1">
+        </div>
+        <div class="control-group">
+            <label>Gravity <span class="value-display" id="gravityValue">0.00</span></label>
+            <input type="range" id="gravity" min="0" max="10" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+            <label>Particles <span class="value-display" id="particlesValue">100</span></label>
+            <input type="range" id="particlesSlider" min="0" max="1000" step="1" value="100">
+        </div>
+        <div class="control-group">
+            <div class="checkbox-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="wallCollision" checked>
+                    Wall Collisions
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="ballCollision" checked>
+                    Ball Collisions
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div id="stats" class="panel">
+        <h2 style="margin-top: 0; color: #4CAF50;">
+            Statistics
+            <button class="minimize-button" title="Minimize">–</button>
+        </h2>
+        <div>FPS: <span class="stat-value" id="fps">0</span></div>
+        <div>Max Velocity: <span class="stat-value" id="maxVelocity">0.00</span></div>
+        <div>Min Velocity: <span class="stat-value" id="minVelocity">0.00</span></div>
+        <div>Total Momentum X: <span class="stat-value" id="totalMomentumX">0.00</span></div>
+        <div>Total Momentum Y: <span class="stat-value" id="totalMomentumY">0.00</span></div>
+        <div>Total Kinetic Energy: <span class="stat-value" id="totalKineticEnergy">0.00</span></div>
+        <div>Total Potential Energy: <span class="stat-value" id="totalPotentialEnergy">0.00</span></div>
+        <div>Total Mechanical Energy: <span class="stat-value" id="totalMechanicalEnergy">0.00</span></div>
+        <div>Entropy: <span class="stat-value" id="entropy">0.00</span></div>
+    </div>
+
+    <div id="toolbar">
+        <button id="reset" style="width: 90px;">Reset</button>
+        <button id="pauseResume" style="width: 90px;">Pause</button>
+        <button id="clearAll" style="width: 90px;">Clear</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // Previous variables and setup
+        var canvas = document.getElementById('canvas');
+        var ctx = canvas.getContext('2d');
+        var balls = [];
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Constants
+        var G_MAX = 100000;
+        var G = 0;
+        var elasticity = 1;
+        var timeScale = 1;
+        var wallCollisionsEnabled = true;
+        var ballCollisionsEnabled = true;
+
+        // Control elements
+        var elasticitySlider = document.getElementById('elasticity');
+        var elasticityValue = document.getElementById('elasticityValue');
+        elasticitySlider.oninput = function() {
+            elasticity = parseFloat(this.value);
+            elasticityValue.textContent = elasticity.toFixed(2);
+        };
+
+        var timeSpeedSlider = document.getElementById('timeSpeed');
+        var timeSpeedValue = document.getElementById('timeSpeedValue');
+        timeSpeedSlider.oninput = function() {
+            timeScale = parseFloat(this.value);
+            timeSpeedValue.textContent = timeScale.toFixed(1) + 'x';
+        };
+
+        var gravitySlider = document.getElementById('gravity');
+        var gravityValue = document.getElementById('gravityValue');
+        gravitySlider.oninput = function() {
+            var gravityFactor = parseFloat(this.value);
+            G = gravityFactor * G_MAX;
+            gravityValue.textContent = gravityFactor.toFixed(2);
+        };
+
+        var wallCollisionCheckbox = document.getElementById('wallCollision');
+        wallCollisionCheckbox.onchange = function() {
+            wallCollisionsEnabled = this.checked;
+        };
+
+        var ballCollisionCheckbox = document.getElementById('ballCollision');
+        ballCollisionCheckbox.onchange = function() {
+            ballCollisionsEnabled = this.checked;
+        };
+
+        // Particles slider
+        var particlesSlider = document.getElementById('particlesSlider');
+        var particlesValue = document.getElementById('particlesValue');
+        particlesValue.textContent = particlesSlider.value;
+        particlesSlider.oninput = function() {
+            var newCount = parseInt(this.value);
+            particlesValue.textContent = newCount;
+            adjustParticleCount(newCount);
+        };
+
+        function adjustParticleCount(newCount) {
+            var currentCount = balls.length;
+            if (newCount > currentCount) {
+                var diff = newCount - currentCount;
+                for (var i = 0; i < diff; i++) {
+                    var x = Math.random() * (canvas.width - 30) + 15;
+                    var y = Math.random() * (canvas.height - 30) + 15;
+                    var vx = (Math.random() - 0.5) * 50;
+                    var vy = (Math.random() - 0.5) * 50;
+                    balls.push(createBall(x, y, vx, vy));
+                }
+            } else if (newCount < currentCount) {
+                var diff = currentCount - newCount;
+                for (var i = 0; i < diff; i++) {
+                    var index = Math.floor(Math.random() * balls.length);
+                    balls.splice(index, 1);
+                }
+            }
+        }
+
+        // Stats elements
+        var fpsDisplay = document.getElementById('fps');
+        var maxVelocityDisplay = document.getElementById('maxVelocity');
+        var minVelocityDisplay = document.getElementById('minVelocity');
+        var totalMomentumXDisplay = document.getElementById('totalMomentumX');
+        var totalMomentumYDisplay = document.getElementById('totalMomentumY');
+        var totalKineticEnergyDisplay = document.getElementById('totalKineticEnergy');
+        var totalPotentialEnergyDisplay = document.getElementById('totalPotentialEnergy');
+        var totalMechanicalEnergyDisplay = document.getElementById('totalMechanicalEnergy');
+        var entropyDisplay = document.getElementById('entropy');
+        var lastFrameTime = performance.now();
+
+        // Pause functionality
+        var isPaused = false;
+
+        // Ball class
+        function Ball(x, y, vx, vy, radius, color) {
+            this.x = x;
+            this.y = y;
+            this.vx = vx;
+            this.vy = vy;
+            this.radius = radius;
+            this.color = color;
+            this.mass = 1;
+            this.ax = 0;
+            this.ay = 0;
+        }
+
+        Ball.prototype.draw = function(ctx) {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = this.color;
+            ctx.fill();
+            ctx.closePath();
+        };
+
+        Ball.prototype.update = function(deltaTime) {
+            this.vx += this.ax * deltaTime;
+            this.vy += this.ay * deltaTime;
+
+            this.x += this.vx * deltaTime;
+            this.y += this.vy * deltaTime;
+
+            this.ax = 0;
+            this.ay = 0;
+        };
+
+        // Ball creation
+        function createBall(x, y, vx, vy) {
+            var radius = 3;
+            var color = 'red'; // All balls are red
+            return new Ball(x, y, vx, vy, radius, color);
+        }
+
+        // Initialize balls
+        balls = [];
+        var initialParticleCount = parseInt(particlesSlider.value);
+        for (var i = 0; i < initialParticleCount; i++) {
+            var x = Math.random() * (canvas.width - 30) + 15;
+            var y = Math.random() * (canvas.height - 30) + 15;
+            var vx = (Math.random() - 0.5) * 50;
+            var vy = (Math.random() - 0.5) * 50;
+            balls.push(createBall(x, y, vx, vy));
+        }
+
+        // Toolbar button handlers
+        document.getElementById('reset').addEventListener('click', function() {
+            balls = [];
+            var initialParticleCount = parseInt(particlesSlider.value);
+            for (var i = 0; i < initialParticleCount; i++) {
+                var x = Math.random() * (canvas.width - 30) + 15;
+                var y = Math.random() * (canvas.height - 30) + 15;
+                var vx = (Math.random() - 0.5) * 50;
+                var vy = (Math.random() - 0.5) * 50;
+                balls.push(createBall(x, y, vx, vy));
+            }
+        });
+
+        document.getElementById('pauseResume').addEventListener('click', function(e) {
+            isPaused = !isPaused;
+            e.target.textContent = isPaused ? 'Resume' : 'Pause';
+            if (!isPaused) {
+                lastFrameTime = performance.now(); // Reset lastFrameTime when resuming
+            }
+        });
+
+        document.getElementById('clearAll').addEventListener('click', function() {
+            balls = [];
+            particlesSlider.value = 0;
+            particlesValue.textContent = 0;
+        });
+
+        // Animation loop
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+
+            if (!isPaused) {
+                var deltaTime = (currentTime - lastFrameTime) / 1000;
+                deltaTime *= timeScale;
+                lastFrameTime = currentTime;
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                var maxVelocity = 0;
+                var minVelocity = Infinity;
+                var totalMomentumX = 0;
+                var totalMomentumY = 0;
+                var totalKineticEnergy = 0;
+                var totalPotentialEnergy = 0;
+
+                // Gravitational forces and potential energy
+                if (G !== 0) {
+                    for (var i = 0; i < balls.length; i++) {
+                        var ball1 = balls[i];
+
+                        for (var j = i + 1; j < balls.length; j++) {
+                            var ball2 = balls[j];
+
+                            var dx = ball2.x - ball1.x;
+                            var dy = ball2.y - ball1.y;
+                            var distance = Math.hypot(dx, dy);
+
+                            var softening = 0.1;
+
+                            if (distance > ball1.radius + ball2.radius) {
+                                var force = (G * ball1.mass * ball2.mass) / (distance * distance + softening);
+                                var fx = (force * dx) / distance;
+                                var fy = (force * dy) / distance;
+
+                                ball1.ax += fx / ball1.mass;
+                                ball1.ay += fy / ball1.mass;
+                                ball2.ax -= fx / ball2.mass;
+                                ball2.ay -= fy / ball2.mass;
+
+                                var potentialEnergy = -(G * ball1.mass * ball2.mass) / (distance + softening);
+                                totalPotentialEnergy += potentialEnergy;
+                            } else {
+                                var potentialEnergy = -(G * ball1.mass * ball2.mass) / (ball1.radius + ball2.radius + softening);
+                                totalPotentialEnergy += potentialEnergy;
+                            }
+                        }
+                    }
+                }
+
+                // Update and draw balls
+                balls.forEach(function(ball) {
+                    // Wall collisions
+                    if (wallCollisionsEnabled) {
+                        if (ball.x + ball.radius > canvas.width) {
+                            ball.x = canvas.width - ball.radius;
+                            ball.vx = -ball.vx * elasticity;
+                        } else if (ball.x - ball.radius < 0) {
+                            ball.x = ball.radius;
+                            ball.vx = -ball.vx * elasticity;
+                        }
+                        if (ball.y + ball.radius > canvas.height) {
+                            ball.y = canvas.height - ball.radius;
+                            ball.vy = -ball.vy * elasticity;
+                        } else if (ball.y - ball.radius < 0) {
+                            ball.y = ball.radius;
+                            ball.vy = -ball.vy * elasticity;
+                        }
+                    } else {
+                        // Wrap around
+                        if (ball.x - ball.radius > canvas.width) {
+                            ball.x = -ball.radius;
+                        } else if (ball.x + ball.radius < 0) {
+                            ball.x = canvas.width + ball.radius;
+                        }
+                        if (ball.y - ball.radius > canvas.height) {
+                            ball.y = -ball.radius;
+                        } else if (ball.y + ball.radius < 0) {
+                            ball.y = canvas.height + ball.radius;
+                        }
+                    }
+
+                    // Ball collisions
+                    if (ballCollisionsEnabled) {
+                        for (var j = 0; j < balls.length; j++) {
+                            if (ball === balls[j]) continue;
+                            var otherBall = balls[j];
+                            var dx = otherBall.x - ball.x;
+                            var dy = otherBall.y - ball.y;
+                            var distance = Math.hypot(dx, dy);
+                            var minDist = ball.radius + otherBall.radius;
+
+                            if (distance < minDist) {
+                                var nx = dx / distance;
+                                var ny = dy / distance;
+                                var tx = -ny;
+                                var ty = nx;
+
+                                var v1n = ball.vx * nx + ball.vy * ny;
+                                var v1t = ball.vx * tx + ball.vy * ty;
+                                var v2n = otherBall.vx * nx + otherBall.vy * ny;
+                                var v2t = otherBall.vx * tx + otherBall.vy * ty;
+
+                                var v1nAfter = v2n * elasticity;
+                                var v2nAfter = v1n * elasticity;
+
+                                ball.vx = v1nAfter * nx + v1t * tx;
+                                ball.vy = v1nAfter * ny + v1t * ty;
+                                otherBall.vx = v2nAfter * nx + v2t * tx;
+                                otherBall.vy = v2nAfter * ny + v2t * ty;
+
+                                var overlap = (minDist - distance) / 2;
+                                ball.x -= overlap * nx;
+                                ball.y -= overlap * ny;
+                                otherBall.x += overlap * nx;
+                                otherBall.y += overlap * ny;
+                            }
+                        }
+                    }
+
+                    ball.update(deltaTime);
+
+                    var velocity = Math.hypot(ball.vx, ball.vy);
+                    if (velocity > maxVelocity) maxVelocity = velocity;
+                    if (velocity < minVelocity) minVelocity = velocity;
+
+                    totalMomentumX += ball.mass * ball.vx;
+                    totalMomentumY += ball.mass * ball.vy;
+                    totalKineticEnergy += 0.5 * ball.mass * velocity * velocity;
+
+                    ball.draw(ctx);
+                });
+
+                var totalMechanicalEnergy = totalKineticEnergy + totalPotentialEnergy;
+
+                // Entropy calculation
+                var numBins = 20;
+                var bins = new Array(numBins).fill(0);
+
+                if (maxVelocity > 0) {
+                    balls.forEach(function(ball) {
+                        var speed = Math.hypot(ball.vx, ball.vy);
+                        var binIndex = Math.floor(speed / (maxVelocity / numBins));
+                        if (binIndex >= numBins) binIndex = numBins - 1;
+                        bins[binIndex] += 1;
+                    });
+
+                    var entropy = 0;
+                    for (var i = 0; i < numBins; i++) {
+                        var count = bins[i];
+                        if (count > 0) {
+                            var p_i = count / balls.length;
+                            entropy -= p_i * Math.log2(p_i);
+                        }
+                    }
+                } else {
+                    var entropy = 0;
+                }
+
+                fpsDisplay.textContent = (1 / deltaTime / timeScale).toFixed(1);
+                maxVelocityDisplay.textContent = maxVelocity.toFixed(2);
+                minVelocityDisplay.textContent = minVelocity.toFixed(2);
+                totalMomentumXDisplay.textContent = totalMomentumX.toFixed(2);
+                totalMomentumYDisplay.textContent = totalMomentumY.toFixed(2);
+                totalKineticEnergyDisplay.textContent = totalKineticEnergy.toFixed(2);
+                totalPotentialEnergyDisplay.textContent = totalPotentialEnergy.toFixed(2);
+                totalMechanicalEnergyDisplay.textContent = totalMechanicalEnergy.toFixed(2);
+                entropyDisplay.textContent = entropy.toFixed(2);
+            } else {
+                // Update lastFrameTime to prevent time jump on resume
+                lastFrameTime = currentTime;
+            }
+        }
+
+        // Start the animation
+        requestAnimationFrame(function(timestamp) {
+            lastFrameTime = timestamp;
+            animate(timestamp);
+        });
+
+        // Minimize button functionality
+        document.querySelectorAll('.minimize-button').forEach(function(button) {
+            button.addEventListener('click', function(e) {
+                var panel = e.target.closest('.panel');
+                // Toggle the display of all elements except the first child (header)
+                for (var i = 1; i < panel.children.length; i++) {
+                    var child = panel.children[i];
+                    if (child.style.display === 'none') {
+                        child.style.display = '';
+                        e.target.textContent = '–';
+                        e.target.title = 'Minimize';
+                    } else {
+                        child.style.display = 'none';
+                        e.target.textContent = '+';
+                        e.target.title = 'Maximize';
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>
